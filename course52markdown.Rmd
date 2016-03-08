@@ -1,0 +1,117 @@
+---
+title: "Natural Disaster Data"
+output: html_document
+---
+## Synopsis
+This analysis looks at the NOAA storm data to answer the questons:
+
+- which events cause the most injuries and fatalities
+- which events cause the most crop and propterty damages
+
+The data covers events from  1950 to 2011. The analysis shows that most injuries and fatalities were caused by tornadoes. Most property damange was caused by tornadoes and floods and most crop damage by droughts and floods. Too much or not enough water is not good for agriculture.
+
+
+```{r}
+library(plyr)
+```
+
+
+Reading the data and subsetting to only include necessary columns.
+```{r}
+gollums<- c('EVTYPE','FATALITIES','INJURIES','PROPDMG','PROPDMGEXP','CROPDMG','CROPDMGEXP') 
+sd<- read.csv(bzfile('repdata-data-StormData.csv.bz2'),stringsAsFactors = FALSE)
+sd<- sd[, gollums]
+sd<- subset(sd, FATALITIES!=0 | INJURIES != 0 | PROPDMG != 0 | CROPDMG !=0)
+```
+
+Looking at the different exponents  for the dollar amounts.The pdf states the usage of K,M, and B, but for the Property data there are over 10,000 records with no indicator (assume exponent 1) and for the crop data more than 50% of the records have no indicator (assume exponent 1). So I assumed 1 as exponent for any observation that was not H, K, M or B.That is default for value of damage is property damage or crop damage dollar amount.
+```{r}
+count(sd$PROPDMGEXP)
+count(sd$CROPDMGEXP)
+```
+## Data Processsing
+```{r}
+sd$PROPDMGEXP<-toupper(sd$PROPDMGEXP)
+sd$CROPDMGEXP<-toupper(sd$CROPDMGEXP)
+```
+
+
+Convert to actual dollar amount for aggregation
+since there is no consistent data entry for the exponents
+this leads to different results for different ways. Calculating for exponents  H,K,M and B and leaving other numbers as is.
+
+```{r}
+sd<- mutate(sd, PROPAmt = ifelse(sd$PROPDMGEXP=='H',sd$PROPDMG*100,ifelse(sd$PROPDMGEXP=='K', sd$PROPDMG*10^3, ifelse(sd$PROPDMGEXP=='M', sd$PROPDMG*10^6, ifelse(sd$PROPDMGEXP=='B', sd$PROPDMG*10^9,sd$PROPDMG)))))
+```
+
+```{r}
+sd<- mutate(sd, CROPAmt = ifelse(sd$CROPDMGEXP=='H',sd$CROPDMG*100, ifelse(sd$CROPDMGEXP=='K', sd$CROPDMG*10^3, ifelse(sd$CROPDMGEXP=='M', sd$CROPDMG*10^6, ifelse(sd$CROPDMGEXP=='B', sd$CROPDMG*10^9,sd$CROPDMG)))))        
+```
+
+
+Since no more than 3 graphs, injuries and fatalities are combined
+```{r}
+sd<- mutate(sd, Tot_num = sd$FATALITIES + sd$INJURIES)
+```
+Aggregate amounts for injuries, fatalitites and property and crop damage amounts
+```{r}
+hurt<- aggregate(sd$Tot_num~sd$EVTYPE, data=sd, FUN=sum)
+cropdmg<- aggregate(sd$CROPAmt~sd$EVTYPE, data=sd, FUN=sum)
+propdmg<- aggregate(sd$PROPAmt~sd$EVTYPE, data=sd, FUN=sum)
+``` 
+
+Rename columns
+```{r}
+names(hurt)<- c('event','number')
+names(cropdmg)<- c('event','amount') 
+names(propdmg)<- c('event','amount')
+```
+
+
+Take top 10 only
+```{r}
+hurt<- hurt[order(-hurt$number),][1:10,]
+cropdmg<- cropdmg[order(-cropdmg$amount),][1:10,]
+propdmg<- propdmg[order(-propdmg$amount),][1:10,]
+```
+
+
+There are a lot more wind related events than any other event. Grouping of some of the event types (TSTM Wind, Thunderstorm Wind, High Wind, Strong Wind, WIND, Wind) should probably be together. This shows about 3 events for thunderstorm wind which should probably be one category.
+
+```{r}
+event_type<- count(sd$EVTYPE)
+event_type<- event_type[order(-event_type$freq),][1:10,]
+event_type
+```
+
+## Results
+
+###Injuries and Fatalities Plot
+
+```{r}
+colors<- c('red', 'yellow','green','violet', 'blue','orange','pink', 'grey','cyan', 'magenta')
+barplot(hurt$number, col=colors, names.arg = hurt$event, main='Fatalities and Injuries by Events', ylab='Number of People',las=3)
+```
+
+```{r}
+hurt
+``` 
+
+
+###Damage plot
+
+```{r}
+par(mfrow=c(1,2))
+barplot(propdmg$amount / 10^9, col='blue', names.arg = propdmg$event, main='Property damage by Events',ylab='Damage $',las=3)
+barplot(cropdmg$amount /10^9, col='green', names.arg = cropdmg$event, main='Crop Damage by Events',ylab='Damage $',las=3)
+par(mfrow=c(1,1))
+```
+Results in numbers: And if you live in an area with Tornadoes (Florida) a storm cellar may be a good investment.Trailer park, not so much.
+
+
+```{r}
+propdmg
+
+cropdmg
+```
+ 
